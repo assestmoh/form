@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8"/>
+<title>نموذج إرسال واستلام الأجهزة</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f7f7f7;
+        padding: 20px;
+        direction: rtl;
+    }
+    h2 { text-align: center; }
+    .form-section {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        position: relative;
+    }
+    label { display: block; margin-top: 10px; }
+    input, select, textarea {
+        width: 100%;
+        padding: 10px;
+        margin-top: 5px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        font-family: inherit;
+        box-sizing: border-box;
+    }
+    textarea { resize: vertical; }
+    table {
+        width: 100%;
+        margin-top: 20px;
+        border-collapse: collapse;
+    }
+    table, th, td { border: 1px solid #ccc; }
+    th, td { padding: 10px; text-align: center; }
+    .button {
+        padding: 10px 20px;
+        margin: 10px 5px 0 0;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+    }
+    .blue { background-color: #007bff; }
+    .orange { background-color: #fd7e14; }
+    .grey { background-color: #6c757d; }
+    .warning { color: red; font-weight: bold; margin-top: 10px; }
+    #signature {
+        margin-top: 40px;
+        text-align: left;
+        font-weight: bold;
+        font-size: 14px;
+        color: #333;
+    }
+    .send-row { background-color: #d4edda; }
+    .receive-row { background-color: #d1ecf1; }
+    .hint { display:block; margin-top:6px; color:#666; font-size:12px; }
+</style>
+</head>
+<body>
+
+<h2>نموذج إرسال واستلام الأجهزة</h2>
+
+<div class="form-section">
+    <label for="actionType">نوع العملية:</label>
+    <select id="actionType">
+        <option value="">-- اختر --</option>
+        <option value="إرسال">إرسال</option>
+        <option value="استلام">استلام</option>
+    </select>
+
+    <label for="personName">اسم الشخص:</label>
+    <input id="personName" type="text"/>
+
+    <label for="date">التاريخ:</label>
+    <input id="date" type="date"/>
+
+    <label for="organization">اسم المؤسسة :</label>
+    <input id="organization" type="text"/>
+
+    <label for="company">اسم السائق:</label>
+    <input id="company" type="text"/>
+
+    <table>
+        <tr>
+            <th>نوع الجهاز</th>
+            <th>الرقم التسلسلي</th>
+            <th>العدد</th>
+        </tr>
+        <tr>
+            <td><input id="deviceType" type="text"/></td>
+            <td><input id="serialNumber" type="text"/></td>
+            <td><input id="quantity" min="1" type="number"/></td>
+        </tr>
+    </table>
+
+    <h3>ملاحظات إضافية</h3>
+    <textarea id="notes" placeholder="أدخل ملاحظاتك هنا..." rows="4"></textarea>
+
+    <!-- المرفق (اختياري) -->
+    <label for="attachment">إرفاق ملف (اختياري)</label>
+    <input type="file" id="attachment" accept=".pdf,.jpg,.jpeg,.png">
+    <span class="hint">يمكن تركه فارغًا — الحد المقترح 5MB</span>
+
+    <div class="warning" id="warningMessage"></div>
+
+    <button class="button blue"   onclick="submitForm()">حفظ</button>
+    <button class="button orange" onclick="showTracking()">تتبع</button>
+    <button class="button grey"   onclick="printTracking()">طباعة</button>
+
+    <div id="signature">
+        قسم الصيانة والدعم الفني
+    </div>
+</div>
+
+<div class="form-section" id="trackingSection" style="display:none;">
+    <h3>لوحة تتبع الأجهزة</h3>
+    <label>بحث بالسيريال:</label>
+    <input id="searchSerial" type="text" placeholder="اكتب السيريال ثم اضغط تتبع"/>
+
+    <table id="trackingTable">
+        <thead>
+            <tr>
+                <th>نوع العملية</th>
+                <th>الاسم</th>
+                <th>التاريخ</th>
+                <th>نوع الجهاز</th>
+                <th>الرقم التسلسلي</th>
+                <th>العدد</th>
+                <th>المؤسسة</th>
+                <th>السائق</th>
+                <th>الملاحظات</th>
+                <th>المرفق</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+const GET_DATA_URL = "https://script.google.com/macros/s/AKfycbxoQ80F3BAbhO9eObE2UijJly9cIjyrbPJ9L96ZMYeySxH3IoY-GZHKwmha3_yls4Es/exec";
+
+let searchVisible = false;
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result.split(",")[1]); // base64 فقط
+        r.onerror = reject;
+        r.readAsDataURL(file);
+    });
+}
+
+async function submitForm() {
+    const type   = document.getElementById("actionType").value;
+    const name   = document.getElementById("personName").value;
+    const date   = document.getElementById("date").value;
+    const org    = document.getElementById("organization").value;
+    const comp   = document.getElementById("company").value;
+    const device = document.getElementById("deviceType").value;
+    const serial = document.getElementById("serialNumber").value;
+    const qty    = document.getElementById("quantity").value;
+    const notes  = document.getElementById("notes").value;
+
+    const fileInput = document.getElementById("attachment");
+    const file = fileInput.files[0] || null;
+
+    const warning = document.getElementById("warningMessage");
+    warning.textContent = "";
+
+    if (!type || !name || !date || !org || !comp || !device || !serial || !qty) {
+        warning.textContent = "يرجى تعبئة جميع الحقول قبل الحفظ.";
+        return;
+    }
+
+    // حد حجم اختياري (5MB)
+    const MAX_MB = 5;
+    if (file && file.size > MAX_MB * 1024 * 1024) {
+        warning.textContent = "حجم الملف كبير (الحد الأقصى " + MAX_MB + "MB).";
+        return;
+    }
+
+    const data = {
+        type,
+        name,
+        date,
+        org,
+        comp,
+        device,
+        serial,
+        qty,
+        notes,
+
+        // المرفق اختياري
+        fileName: file ? file.name : "",
+        fileMime: file ? file.type : "",
+        fileBase64: file ? await fileToBase64(file) : ""
+    };
+
+    fetch(GET_DATA_URL, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(res => {
+        if (!res || !res.ok) {
+            alert("حدث خطأ: " + ((res && res.error) ? res.error : "تعذر قراءة رد السكربت"));
+            return;
+        }
+        alert("تم الحفظ بنجاح." + (res.fileUrl ? ("\nرابط المرفق:\n" + res.fileUrl) : "\nبدون مرفق"));
+        clearForm();
+    })
+    .catch(error => {
+        alert("حدث خطأ أثناء الحفظ");
+        console.error(error);
+    });
+}
+
+function clearForm() {
+    document.getElementById("actionType").value   = "";
+    document.getElementById("personName").value   = "";
+    document.getElementById("date").value         = "";
+    document.getElementById("organization").value = "";
+    document.getElementById("company").value      = "";
+    document.getElementById("deviceType").value   = "";
+    document.getElementById("serialNumber").value = "";
+    document.getElementById("quantity").value     = "";
+    document.getElementById("notes").value        = "";
+    document.getElementById("attachment").value   = "";
+}
+
+function showTracking() {
+    const section     = document.getElementById("trackingSection");
+    const tableBody   = document.querySelector("#trackingTable tbody");
+    const searchInput = document.getElementById("searchSerial");
+
+    section.style.display = "block";
+
+    if (!searchVisible) {
+        tableBody.innerHTML = "";
+        searchInput.value = "";
+        alert("اكتب الرقم التسلسلي الذي تريد تتبعه ثم اضغط تتبع مرة أخرى.");
+        searchVisible = true;
+        return;
+    }
+
+    const serialFilter = searchInput.value.trim();
+
+    if (!serialFilter) {
+        alert("يرجى كتابة الرقم التسلسلي أولاً.");
+        return;
+    }
+
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="10">جاري تحميل البيانات... الرجاء الانتظار</td>
+        </tr>
+    `;
+
+    let url = GET_DATA_URL + `?serial=${encodeURIComponent(serialFilter)}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            tableBody.innerHTML = "";
+
+            if (!data.length) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="10">لا توجد بيانات لهذا السيريال</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            data.forEach(row => {
+                const dateVal = row["التاريخ"] || row.date;
+                const dateFormatted = formatDate(dateVal);
+                const tr = document.createElement("tr");
+
+                const type  = row["نوع العملية"] || row.type;
+                const name  = row["الاسم"] || row.name;
+                const dev   = row["نوع الجهاز"] || row.device;
+                const ser   = row["الرقم التسلسلي"] || row.serial;
+                const qty   = row["العدد"] || row.qty;
+                const org   = row["المؤسسة"] || row.org;
+                const comp  = row["السائق"] || row.comp;
+                const notes = row["الملاحظات"] || row.notes || "";
+
+                // رابط المرفق (اسم العمود: fileUrl)
+                const fileUrl = row["fileUrl"] || row.fileUrl || "";
+
+                tr.className = type === "إرسال"
+                    ? "send-row"
+                    : (type === "استلام" ? "receive-row" : "");
+
+                const attachmentCell = fileUrl
+                  ? `<a href="${fileUrl}" target="_blank" title="عرض المرفق" style="text-decoration:none;font-size:18px;">📎</a>`
+                  : `<span style="color:#999;">—</span>`;
+
+                tr.innerHTML = `
+                    <td>${type || ""}</td>
+                    <td>${name || ""}</td>
+                    <td>${dateFormatted || ""}</td>
+                    <td>${dev || ""}</td>
+                    <td>${ser || ""}</td>
+                    <td>${qty || ""}</td>
+                    <td>${org || ""}</td>
+                    <td>${comp || ""}</td>
+                    <td>${notes}</td>
+                    <td>${attachmentCell}</td>
+                `;
+
+                tableBody.appendChild(tr);
+            });
+        })
+        .catch(err => {
+            console.error("FETCH ERROR:", err);
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="10">حدث خطأ في الاتصال بالسكربت: ${err}</td>
+                </tr>
+            `;
+        });
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const year  = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day   = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function printTracking() {
+    const tracking = document.getElementById("trackingSection").innerHTML;
+    const style = `
+        <style>
+            body { direction: rtl; font-family: Arial; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            table, th, td { border: 1px solid #ccc; }
+            th, td { padding: 10px; text-align: center; }
+        </style>
+    `;
+    const printWindow = window.open('', '', 'width=800,height=600');
+    printWindow.document.write(
+        `<html><head><title>طباعة تتبع الأجهزة</title>${style}</head><body>${tracking}</body></html>`
+    );
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+}
+</script>
+
+</body>
+</html>
